@@ -73,6 +73,35 @@ export async function loginUser(formData: FormData): Promise<AuthResult> {
   }
 }
 
+export async function adminLoginUser(formData: FormData): Promise<AuthResult> {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+
+  // Pre-check: verify the user exists and has an admin role before signing in
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { role: true },
+  });
+
+  if (!user || user.role !== "admin") {
+    return { success: false, error: "Access denied" };
+  }
+
+  try {
+    await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+    });
+    return { success: true };
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return { success: false, error: "Invalid credentials" };
+    }
+    throw error;
+  }
+}
+
 export async function logoutUser() {
   await signOut({ redirect: false });
 }

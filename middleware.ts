@@ -12,7 +12,16 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // Auth pages - redirect logged-in users to dashboard
+  // Admin login page - standalone, no sidebar
+  if (pathname === "/admin/login") {
+    // If already logged in as admin, redirect to admin dashboard
+    if (isLoggedIn && role === "admin") {
+      return NextResponse.redirect(new URL("/admin", req.url));
+    }
+    return NextResponse.next();
+  }
+
+  // User auth pages - redirect logged-in users to dashboard
   const authPages = ["/login", "/register", "/verify-email"];
   if (authPages.some((p) => pathname.startsWith(p))) {
     if (isLoggedIn) {
@@ -21,10 +30,10 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // Admin routes - require admin role
+  // Admin routes - require admin role, separate login flow
   if (pathname.startsWith("/admin")) {
     if (!isLoggedIn) {
-      return NextResponse.redirect(new URL("/login", req.url));
+      return NextResponse.redirect(new URL("/admin/login", req.url));
     }
     if (role !== "admin") {
       return NextResponse.redirect(new URL("/dashboard", req.url));
