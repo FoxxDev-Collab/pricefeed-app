@@ -3,8 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Toaster } from "@/components/ui/sonner";
-import { getGeneralSettings } from "@/lib/settings";
-
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -15,16 +13,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const general = await getGeneralSettings();
-  return {
-    title: {
-      default: `${general.siteName} - ${general.siteDescription}`,
-      template: `%s | ${general.siteName}`,
-    },
-    description: general.siteDescription,
-  };
-}
+export const metadata: Metadata = {
+  title: {
+    default: "PriceFeed - Community Grocery Price Comparison",
+    template: "%s | PriceFeed",
+  },
+  description:
+    "Track grocery prices, compare stores, optimize shopping lists, and save money with community-driven price data.",
+};
 
 export default function RootLayout({
   children,
