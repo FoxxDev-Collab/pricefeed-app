@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-export default auth((req) => {
+export default auth(async (req) => {
   const { pathname } = req.nextUrl;
   const isLoggedIn = !!req.auth;
   const role = req.auth?.user?.role;
@@ -14,18 +14,8 @@ export default auth((req) => {
 
   // Admin login page - standalone, no sidebar
   if (pathname === "/admin/login") {
-    // If already logged in as admin, redirect to admin dashboard
     if (isLoggedIn && role === "admin") {
       return NextResponse.redirect(new URL("/admin", req.url));
-    }
-    return NextResponse.next();
-  }
-
-  // User auth pages - redirect logged-in users to dashboard
-  const authPages = ["/login", "/register", "/verify-email"];
-  if (authPages.some((p) => pathname.startsWith(p))) {
-    if (isLoggedIn) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
     }
     return NextResponse.next();
   }
@@ -36,6 +26,20 @@ export default auth((req) => {
       return NextResponse.redirect(new URL("/admin/login", req.url));
     }
     if (role !== "admin") {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+    return NextResponse.next();
+  }
+
+  // Maintenance mode check (non-admin, non-auth routes)
+  // We check a cookie-header-based approach since middleware can't do DB calls easily.
+  // Instead, maintenance mode is enforced via a layout-level check (see app layout).
+  // Middleware only handles auth routing.
+
+  // User auth pages - redirect logged-in users to dashboard
+  const authPages = ["/login", "/register", "/verify-email"];
+  if (authPages.some((p) => pathname.startsWith(p))) {
+    if (isLoggedIn) {
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
     return NextResponse.next();

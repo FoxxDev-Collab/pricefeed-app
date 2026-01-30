@@ -119,6 +119,10 @@ async function main() {
     { key: "captcha_enabled", value: "false", valueType: "bool", category: "api", description: "Enable Cloudflare Turnstile CAPTCHA", isSensitive: false },
     { key: "captcha_site_key", value: "", valueType: "string", category: "api", description: "Turnstile site key", isSensitive: false },
     { key: "captcha_secret_key", value: "", valueType: "encrypted", category: "api", description: "Turnstile secret key", isSensitive: true },
+    // Maps
+    { key: "google_api_key_maps", value: "", valueType: "encrypted", category: "maps", description: "Google Maps API key", isSensitive: true },
+    // Storage
+    { key: "blob_store_token", value: "", valueType: "encrypted", category: "storage", description: "Vercel Blob store token", isSensitive: true },
   ];
 
   for (const s of settings) {

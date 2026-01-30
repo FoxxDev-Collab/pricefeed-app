@@ -19,6 +19,8 @@ const CATEGORIES = [
   { key: "prices", label: "Prices", description: "Price expiry, verification, and deviation settings" },
   { key: "reputation", label: "Reputation", description: "Points and level thresholds" },
   { key: "api", label: "API", description: "Rate limits, CORS, API keys, and CAPTCHA" },
+  { key: "maps", label: "Maps", description: "Google Maps API configuration" },
+  { key: "storage", label: "Storage", description: "File storage and blob store configuration" },
 ];
 
 export default async function AdminSettingsPage() {

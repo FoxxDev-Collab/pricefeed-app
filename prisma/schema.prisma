@@ -78,6 +78,10 @@ model User {
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
   lastLoginAt      DateTime? @map("last_login_at")
 
+  // Login security
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+
   // Location
   streetAddress String?  @map("street_address") @db.VarChar(255)
   city          String?  @db.VarChar(100)

@@ -3,6 +3,8 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { invalidateSettingsCache } from "@/lib/settings";
+import { sendTestEmail } from "@/lib/email";
 
 async function requireAdmin() {
   const session = await auth();
@@ -140,6 +142,7 @@ export async function updateSetting(key: string, value: string) {
     where: { key },
     data: { value },
   });
+  invalidateSettingsCache();
   revalidatePath("/admin/settings");
 }
 
@@ -153,5 +156,23 @@ export async function updateSettings(settings: { key: string; value: string }[])
       })
     )
   );
+  invalidateSettingsCache();
   revalidatePath("/admin/settings");
+}
+
+// ── Admin Test Actions ──
+
+export async function adminSendTestEmail(to: string) {
+  const admin = await requireAdmin();
+  const result = await sendTestEmail(to || admin.email);
+  return result;
+}
+
+export async function adminUnlockUser(userId: number) {
+  await requireAdmin();
+  await prisma.user.update({
+    where: { id: userId },
+    data: { failedLoginAttempts: 0, lockedUntil: null },
+  });
+  revalidatePath("/admin/users");
 }

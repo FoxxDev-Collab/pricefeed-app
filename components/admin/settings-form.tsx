@@ -12,9 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { updateSettings } from "@/actions/admin-actions";
+import { updateSettings, adminSendTestEmail } from "@/actions/admin-actions";
 import { toast } from "sonner";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Send, CheckCircle2, XCircle } from "lucide-react";
 
 interface Setting {
   key: string;
@@ -34,6 +34,9 @@ export function SettingsForm({ settings }: { settings: Setting[] }) {
     return initial;
   });
   const [loading, setLoading] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
+
+  const category = settings[0]?.category;
 
   function handleChange(key: string, value: string) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -58,6 +61,22 @@ export function SettingsForm({ settings }: { settings: Setting[] }) {
       toast.error("Failed to save settings");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleTestEmail() {
+    setTestLoading(true);
+    try {
+      const result = await adminSendTestEmail("");
+      if (result.success) {
+        toast.success("Test email sent successfully");
+      } else {
+        toast.error(result.error || "Failed to send test email");
+      }
+    } catch {
+      toast.error("Failed to send test email");
+    } finally {
+      setTestLoading(false);
     }
   }
 
@@ -114,8 +133,71 @@ export function SettingsForm({ settings }: { settings: Setting[] }) {
     );
   }
 
+  function renderStatusBadge() {
+    if (category === "email") {
+      const enabled = values["smtp_enabled"] === "true";
+      const configured = !!values["smtp_host"] && !!values["smtp_user"];
+      if (!enabled) {
+        return (
+          <Badge variant="secondary" className="gap-1">
+            <XCircle className="h-3 w-3" /> Disabled
+          </Badge>
+        );
+      }
+      if (!configured) {
+        return (
+          <Badge variant="destructive" className="gap-1">
+            <XCircle className="h-3 w-3" /> Not Configured
+          </Badge>
+        );
+      }
+      return (
+        <Badge variant="default" className="gap-1 bg-green-600">
+          <CheckCircle2 className="h-3 w-3" /> Configured
+        </Badge>
+      );
+    }
+
+    if (category === "maps") {
+      const hasKey = !!values["google_api_key_maps"];
+      return hasKey ? (
+        <Badge variant="default" className="gap-1 bg-green-600">
+          <CheckCircle2 className="h-3 w-3" /> Key Set
+        </Badge>
+      ) : (
+        <Badge variant="secondary" className="gap-1">
+          <XCircle className="h-3 w-3" /> No Key
+        </Badge>
+      );
+    }
+
+    if (category === "storage") {
+      const hasToken = !!values["blob_store_token"];
+      return hasToken ? (
+        <Badge variant="default" className="gap-1 bg-green-600">
+          <CheckCircle2 className="h-3 w-3" /> Token Set
+        </Badge>
+      ) : (
+        <Badge variant="secondary" className="gap-1">
+          <XCircle className="h-3 w-3" /> No Token
+        </Badge>
+      );
+    }
+
+    return null;
+  }
+
   return (
     <div className="space-y-6">
+      {renderStatusBadge() && (
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-muted-foreground">
+            Status:
+          </span>
+          {renderStatusBadge()}
+        </div>
+      )}
+
       <div className="space-y-4">
         {settings.map((setting) => (
           <div
@@ -142,7 +224,23 @@ export function SettingsForm({ settings }: { settings: Setting[] }) {
         ))}
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          {category === "email" && (
+            <Button
+              variant="outline"
+              onClick={handleTestEmail}
+              disabled={testLoading || values["smtp_enabled"] !== "true"}
+            >
+              {testLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              Send Test Email
+            </Button>
+          )}
+        </div>
         <Button onClick={handleSave} disabled={loading}>
           {loading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
