@@ -1,0 +1,504 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────── ENUMS ────────────────
+
+enum Role {
+  user
+  admin
+  moderator
+}
+
+enum SubscriptionTier {
+  free
+  pro
+  business
+}
+
+enum ListStatus {
+  active
+  completed
+}
+
+enum ReceiptStatus {
+  pending
+  processing
+  completed
+  failed
+  confirmed
+}
+
+enum MatchStatus {
+  pending
+  matched
+  new_item
+  skipped
+}
+
+// ──────────────── AUTH.JS REQUIRED ────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            Int     @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// ──────────────── CORE DOMAIN ────────────────
+
+model User {
+  id               Int       @id @default(autoincrement())
+  email            String    @unique @db.VarChar(255)
+  passwordHash     String    @map("password_hash") @db.VarChar(255)
+  username         String?   @unique @db.VarChar(50)
+  regionId         Int?      @map("region_id")
+  reputationPoints Int       @default(0) @map("reputation_points")
+  role             Role      @default(user)
+  emailVerified    Boolean   @default(false) @map("email_verified")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
+  lastLoginAt      DateTime? @map("last_login_at")
+
+  // Location
+  streetAddress String?  @map("street_address") @db.VarChar(255)
+  city          String?  @db.VarChar(100)
+  state         String?  @db.VarChar(2)
+  zipCode       String?  @map("zip_code") @db.VarChar(10)
+  latitude      Decimal? @db.Decimal(10, 8)
+  longitude     Decimal? @db.Decimal(11, 8)
+  googlePlaceId String?  @map("google_place_id") @db.VarChar(255)
+
+  // SaaS subscription
+  subscriptionTier      SubscriptionTier @default(free) @map("subscription_tier")
+  stripeCustomerId      String?          @unique @map("stripe_customer_id")
+  stripeSubscriptionId  String?          @unique @map("stripe_subscription_id")
+  subscriptionExpiresAt DateTime?        @map("subscription_expires_at")
+
+  // Relations
+  region                Region?              @relation(fields: [regionId], references: [id])
+  accounts              Account[]
+  sessions              UserSession[]
+  stores                Store[]              @relation("StoreCreator")
+  items                 Item[]               @relation("ItemCreator")
+  storePrices           StorePrice[]
+  priceVerifications    PriceVerification[]
+  priceHistory          PriceHistory[]
+  shoppingLists         ShoppingList[]
+  receipts              Receipt[]
+  inventoryItems        InventoryItem[]
+  priceFeed             PriceFeed[]
+  emailVerifyTokens     EmailVerificationToken[]
+
+  @@index([email])
+  @@index([username])
+  @@index([latitude, longitude])
+  @@map("users")
+}
+
+model UserSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    Int      @map("user_id")
+  token     String   @unique @db.VarChar(255)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+model EmailVerificationToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  token     String    @unique @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+model Region {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  state     String   @db.VarChar(2)
+  zipCodes  String[] @map("zip_codes")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  users     User[]
+  stores    Store[]
+  priceFeed PriceFeed[]
+
+  @@map("regions")
+}
+
+model Store {
+  id                Int      @id @default(autoincrement())
+  name              String   @db.VarChar(255)
+  streetAddress     String   @map("street_address") @db.VarChar(255)
+  city              String   @db.VarChar(100)
+  state             String   @db.VarChar(2)
+  zipCode           String   @map("zip_code") @db.VarChar(10)
+  regionId          Int?     @map("region_id")
+  storeType         String?  @map("store_type") @db.VarChar(50)
+  chain             String?  @db.VarChar(100)
+  latitude          Decimal? @db.Decimal(10, 8)
+  longitude         Decimal? @db.Decimal(11, 8)
+  verified          Boolean  @default(false)
+  verificationCount Int      @default(0) @map("verification_count")
+  isPrivate         Boolean  @default(false) @map("is_private")
+  createdBy         Int?     @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  region         Region?         @relation(fields: [regionId], references: [id])
+  creator        User?           @relation("StoreCreator", fields: [createdBy], references: [id])
+  storePrices    StorePrice[]
+  priceHistory   PriceHistory[]
+  receipts       Receipt[]
+  priceFeed      PriceFeed[]
+  storePlanItems StorePlanItem[]
+
+  @@unique([streetAddress, state, zipCode, regionId], name: "unique_store_address")
+  @@index([regionId])
+  @@index([zipCode])
+  @@index([isPrivate])
+  @@index([createdBy])
+  @@map("stores")
+}
+
+model Item {
+  id                Int      @id @default(autoincrement())
+  name              String   @db.VarChar(255)
+  brand             String?  @db.VarChar(100)
+  size              Decimal? @db.Decimal(10, 3)
+  unit              String?  @db.VarChar(20)
+  description       String?
+  verified          Boolean  @default(false)
+  verificationCount Int      @default(0) @map("verification_count")
+  isPrivate         Boolean  @default(true) @map("is_private")
+  createdBy         Int?     @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  creator               User?              @relation("ItemCreator", fields: [createdBy], references: [id])
+  storePrices            StorePrice[]
+  itemTags               ItemTag[]
+  shoppingListItems      ShoppingListItem[]
+  inventoryItems         InventoryItem[]
+  priceFeed              PriceFeed[]
+  priceHistory           PriceHistory[]
+  storePlanItems         StorePlanItem[]
+  matchedReceiptItems    ReceiptItem[]      @relation("MatchedItem")
+  confirmedReceiptItems  ReceiptItem[]      @relation("ConfirmedItem")
+  createdReceiptItems    ReceiptItem[]      @relation("CreatedItem")
+
+  @@index([isPrivate])
+  @@index([createdBy])
+  @@map("items")
+}
+
+model Tag {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(50)
+  slug       String   @unique @db.VarChar(50)
+  usageCount Int      @default(0) @map("usage_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  itemTags ItemTag[]
+
+  @@index([name])
+  @@index([usageCount(sort: Desc)])
+  @@map("tags")
+}
+
+model ItemTag {
+  itemId    Int      @map("item_id")
+  tagId     Int      @map("tag_id")
+  createdBy Int?     @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, tagId])
+  @@map("item_tags")
+}
+
+model StorePrice {
+  id            Int       @id @default(autoincrement())
+  storeId       Int       @map("store_id")
+  itemId        Int       @map("item_id")
+  price         Decimal   @db.Decimal(10, 2)
+  userId        Int?      @map("user_id")
+  isShared      Boolean   @default(true) @map("is_shared")
+  verifiedCount Int       @default(0) @map("verified_count")
+  lastVerified  DateTime? @map("last_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  store         Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  item          Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user          User?               @relation(fields: [userId], references: [id])
+  verifications PriceVerification[]
+
+  @@index([storeId])
+  @@index([itemId])
+  @@index([updatedAt(sort: Desc)])
+  @@index([isShared])
+  @@index([userId])
+  @@map("store_prices")
+}
+
+model PriceVerification {
+  id         Int      @id @default(autoincrement())
+  priceId    Int      @map("price_id")
+  userId     Int      @map("user_id")
+  isAccurate Boolean  @map("is_accurate")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  price StorePrice @relation(fields: [priceId], references: [id], onDelete: Cascade)
+  user  User       @relation(fields: [userId], references: [id])
+
+  @@unique([priceId, userId])
+  @@map("price_verifications")
+}
+
+model PriceHistory {
+  id            Int      @id @default(autoincrement())
+  storeId       Int      @map("store_id")
+  itemId        Int      @map("item_id")
+  price         Decimal  @db.Decimal(10, 2)
+  previousPrice Decimal? @map("previous_price") @db.Decimal(10, 2)
+  userId        Int?     @map("user_id")
+  recordedAt    DateTime @default(now()) @map("recorded_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  item  Item  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([itemId, storeId, recordedAt(sort: Desc)])
+  @@index([itemId, recordedAt(sort: Desc)])
+  @@index([storeId, recordedAt(sort: Desc)])
+  @@map("price_history")
+}
+
+model ShoppingList {
+  id             Int        @id @default(autoincrement())
+  userId         Int        @map("user_id")
+  name           String     @db.VarChar(255)
+  status         ListStatus @default(active)
+  targetDate     DateTime?  @map("target_date") @db.Date
+  completedAt    DateTime?  @map("completed_at")
+  shareToken     String?    @unique @map("share_token") @db.VarChar(64)
+  shareExpiresAt DateTime?  @map("share_expires_at")
+  shareCreatedAt DateTime?  @map("share_created_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @default(now()) @updatedAt @map("updated_at")
+
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      ShoppingListItem[]
+  storePlans StorePlan[]
+
+  @@map("shopping_lists")
+}
+
+model ShoppingListItem {
+  id        Int       @id @default(autoincrement())
+  listId    Int       @map("list_id")
+  itemId    Int       @map("item_id")
+  quantity  Int       @default(1)
+  isChecked Boolean   @default(false) @map("is_checked")
+  checkedAt DateTime? @map("checked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  list ShoppingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  item Item         @relation(fields: [itemId], references: [id])
+
+  @@unique([listId, itemId])
+  @@map("shopping_list_items")
+}
+
+model StorePlan {
+  id                  Int      @id @default(autoincrement())
+  listId              Int      @map("list_id")
+  totalSavings        Decimal? @map("total_savings") @db.Decimal(10, 2)
+  recommendedStrategy String?  @map("recommended_strategy")
+  generatedAt         DateTime @default(now()) @map("generated_at")
+
+  list  ShoppingList    @relation(fields: [listId], references: [id], onDelete: Cascade)
+  items StorePlanItem[]
+
+  @@index([listId])
+  @@map("store_plans")
+}
+
+model StorePlanItem {
+  id        Int      @id @default(autoincrement())
+  planId    Int      @map("plan_id")
+  storeId   Int      @map("store_id")
+  itemId    Int      @map("item_id")
+  quantity  Int
+  price     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  plan  StorePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  store Store     @relation(fields: [storeId], references: [id])
+  item  Item      @relation(fields: [itemId], references: [id])
+
+  @@index([planId])
+  @@index([storeId])
+  @@map("store_plan_items")
+}
+
+model Receipt {
+  id               Int           @id @default(autoincrement())
+  userId           Int           @map("user_id")
+  storeId          Int?          @map("store_id")
+  blobUrl          String?       @map("blob_url")
+  originalFilename String?       @map("original_filename") @db.VarChar(255)
+  contentType      String?       @map("content_type") @db.VarChar(100)
+  fileSizeBytes    BigInt?       @map("file_size_bytes")
+  status           ReceiptStatus @default(pending)
+  ocrText          String?       @map("ocr_text")
+  errorMessage     String?       @map("error_message")
+  receiptDate      DateTime?     @map("receipt_date") @db.Date
+  receiptTotal     Decimal?      @map("receipt_total") @db.Decimal(10, 2)
+  uploadedAt       DateTime      @default(now()) @map("uploaded_at")
+  processedAt      DateTime?     @map("processed_at")
+  confirmedAt      DateTime?     @map("confirmed_at")
+  expiresAt        DateTime      @map("expires_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store?        @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  items ReceiptItem[]
+
+  @@index([userId])
+  @@index([storeId])
+  @@index([status])
+  @@index([uploadedAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("receipts")
+}
+
+model ReceiptItem {
+  id                Int         @id @default(autoincrement())
+  receiptId         Int         @map("receipt_id")
+  rawText           String      @map("raw_text") @db.VarChar(500)
+  extractedName     String?     @map("extracted_name") @db.VarChar(255)
+  extractedPrice    Decimal?    @map("extracted_price") @db.Decimal(10, 2)
+  extractedQuantity Int         @default(1) @map("extracted_quantity")
+  matchedItemId     Int?        @map("matched_item_id")
+  matchConfidence   Decimal?    @map("match_confidence") @db.Decimal(5, 4)
+  matchStatus       MatchStatus @default(pending) @map("match_status")
+  confirmedItemId   Int?        @map("confirmed_item_id")
+  confirmedPrice    Decimal?    @map("confirmed_price") @db.Decimal(10, 2)
+  isConfirmed       Boolean     @default(false) @map("is_confirmed")
+  createdItemId     Int?        @map("created_item_id")
+  lineNumber        Int?        @map("line_number")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @default(now()) @updatedAt @map("updated_at")
+
+  receipt       Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  matchedItem   Item?   @relation("MatchedItem", fields: [matchedItemId], references: [id], onDelete: SetNull)
+  confirmedItem Item?   @relation("ConfirmedItem", fields: [confirmedItemId], references: [id], onDelete: SetNull)
+  createdItem   Item?   @relation("CreatedItem", fields: [createdItemId], references: [id], onDelete: SetNull)
+
+  @@index([receiptId])
+  @@index([matchedItemId])
+  @@index([matchStatus])
+  @@map("receipt_items")
+}
+
+model InventoryItem {
+  id                   Int       @id @default(autoincrement())
+  userId               Int       @map("user_id")
+  itemId               Int?      @map("item_id")
+  customName           String?   @map("custom_name") @db.VarChar(255)
+  customBrand          String?   @map("custom_brand") @db.VarChar(100)
+  customSize           Decimal?  @map("custom_size") @db.Decimal(10, 3)
+  customUnit           String?   @map("custom_unit") @db.VarChar(20)
+  quantity             Decimal   @default(1) @db.Decimal(10, 3)
+  unit                 String?   @db.VarChar(20)
+  lowStockThreshold    Decimal   @default(1) @map("low_stock_threshold") @db.Decimal(10, 3)
+  lowStockAlertEnabled Boolean   @default(true) @map("low_stock_alert_enabled")
+  purchaseDate         DateTime? @map("purchase_date") @db.Date
+  expirationDate       DateTime? @map("expiration_date") @db.Date
+  location             String?   @db.VarChar(100)
+  notes                String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item Item? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([itemId])
+  @@index([userId, expirationDate])
+  @@index([userId, lowStockAlertEnabled])
+  @@index([userId, location])
+  @@map("inventory_items")
+}
+
+model PriceFeed {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  storeId   Int?     @map("store_id")
+  itemId    Int?     @map("item_id")
+  price     Decimal? @db.Decimal(10, 2)
+  action    String?  @db.VarChar(50)
+  regionId  Int?     @map("region_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User?   @relation(fields: [userId], references: [id])
+  store  Store?  @relation(fields: [storeId], references: [id])
+  item   Item?   @relation(fields: [itemId], references: [id])
+  region Region? @relation(fields: [regionId], references: [id])
+
+  @@index([regionId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("price_feed")
+}
+
+model SystemSetting {
+  key         String   @id @db.VarChar(100)
+  value       String?
+  valueType   String   @default("string") @map("value_type") @db.VarChar(20)
+  category    String   @default("general") @db.VarChar(50)
+  description String?
+  isSensitive Boolean  @default(false) @map("is_sensitive")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@map("system_settings")
+}
